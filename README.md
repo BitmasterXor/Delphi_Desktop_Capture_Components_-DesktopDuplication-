@@ -16,9 +16,9 @@
 
 Preview Images:
 
-<div align="center"> ![Network Preview](Preview1.png) </div>
+<Center>![Network Preview](Preview1.png) </Center>
 
-<div align="center"> ![Network Preview](Preview2.png) </div>
+<Center> ![Network Preview](Preview2.png) </Center>
 
 ## 🚀 Overview
 
