@@ -123,24 +123,15 @@ graph TD
 ```pascal
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  // Configure desktop capture
-  DesktopCapture1.Method := cmDXGI;        // Use DXGI for performance
-  DesktopCapture1.Mode := cmDirtyOnly;     // Send full frame, then dirty only
-  DesktopCapture1.TargetFPS := 30;         // 30 FPS target
-  DesktopCapture1.IncludeCursor := True;   // Include mouse cursor
+  DesktopCapture1.Mode := cmDirtyOnly;
   DesktopCapture1.OnFrameCaptured := OnFrameCaptured;
-  DesktopCapture1.Active := True;          // Start capturing
+  DesktopCapture1.Active := True;
 end;
 
 procedure TForm1.OnFrameCaptured(Sender: TObject; const FrameData: TBytes; IsFullFrame: Boolean);
 begin
-  if IsFullFrame then
-    Memo1.Lines.Add('Sent full frame: ' + IntToStr(Length(FrameData)) + ' bytes')
-  else
-    Memo1.Lines.Add('Sent dirty regions: ' + IntToStr(Length(FrameData)) + ' bytes');
-    
-  // Send over network or process locally
-  ProcessFrameData(FrameData);
+  // That's it - FrameData contains everything needed
+  // First frame = full screen, subsequent = dirty regions only
 end;
 ```
 
@@ -148,179 +139,88 @@ end;
 ```pascal
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  // Setup capture
-  DesktopCapture1.Mode := cmDirtyOnly;
   DesktopCapture1.OnFrameCaptured := OnLocalFrame;
   DesktopCapture1.Active := True;
-  
-  // Setup receiver for display
-  DesktopReceiver1.TargetImage := Image1;  // Display in Image component
-  DesktopReceiver1.Active := True;
+  DesktopReceiver1.TargetImage := Image1;
 end;
 
 procedure TForm1.OnLocalFrame(Sender: TObject; const FrameData: TBytes; IsFullFrame: Boolean);
 begin
-  // Feed captured data directly to receiver for local display
   DesktopReceiver1.ReceiveFrameData(FrameData);
 end;
 ```
 
 ### Network Desktop Streaming (Sender)
 ```pascal
-// Sender Side - Stream desktop over network
-procedure TForm1.StartDesktopStreaming;
+// Sender Side - ONE LINE to send over NetCom7
+procedure TForm1.OnFrameCaptured(Sender: TObject; const FrameData: TBytes; IsFullFrame: Boolean);
 begin
-  // Configure for network efficiency
-  DesktopCapture1.Method := cmDXGI;        // Best performance
-  DesktopCapture1.Mode := cmDirtyOnly;     // Minimize bandwidth
-  DesktopCapture1.TargetFPS := 25;         // Network-friendly frame rate
-  DesktopCapture1.IncludeCursor := True;   // Include cursor for remote control
-  
-  DesktopCapture1.OnFrameCaptured := procedure(Sender: TObject; const FrameData: TBytes; IsFullFrame: Boolean)
-  begin
-    // Add frame type header for network protocol
-    var Header: TNetworkFrameHeader;
-    Header.IsFullFrame := IsFullFrame;
-    Header.FrameSize := Length(FrameData);
-    Header.Timestamp := GetTickCount64;
-    
-    // Send header + frame data over NetCom7
-    NetComServer.SendBytes(ClientID, @Header, SizeOf(Header));
-    NetComServer.SendBytes(ClientID, @FrameData[0], Length(FrameData));
-    
-    // Update statistics
-    if IsFullFrame then
-      Inc(FullFramesSent)
-    else
-      Inc(DirtyFramesSent);
-  end;
-  
+  NetCom7Client.ExecCommand(1, FrameData);  // DONE!
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  DesktopCapture1.OnFrameCaptured := OnFrameCaptured;
   DesktopCapture1.Active := True;
 end;
 ```
 
 ### Network Desktop Streaming (Receiver)
 ```pascal
-// Receiver Side - Receive and display network desktop
-procedure TForm1.OnNetworkDataReceived(Sender: TObject; const Data: TBytes);
-var
-  Header: TNetworkFrameHeader;
-  FrameData: TBytes;
+// Receiver Side - ONE LINE to receive and display
+procedure TForm1.NetCom7Server1ExecCommand(Sender: TObject; Socket: TCustomWinSocket; 
+  const Command: Integer; Data: TBytes);
 begin
-  if Length(Data) >= SizeOf(TNetworkFrameHeader) then
-  begin
-    // Extract header
-    Move(Data[0], Header, SizeOf(Header));
-    
-    // Extract frame data
-    if Header.FrameSize > 0 then
-    begin
-      SetLength(FrameData, Header.FrameSize);
-      Move(Data[SizeOf(Header)], FrameData[0], Header.FrameSize);
-      
-      // Feed to receiver for reconstruction and display
-      DesktopReceiver1.ReceiveFrameData(FrameData);
-      
-      // Update statistics
-      LabelFPS.Caption := Format('FPS: %.1f', [CalculateFPS]);
-      if Header.IsFullFrame then
-        LabelFrameType.Caption := 'Full Frame'
-      else
-        LabelFrameType.Caption := 'Dirty Regions';
-    end;
-  end;
+  if Command = 1 then
+    DesktopReceiver1.ReceiveFrameData(Data);  // DONE!
 end;
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  // Setup receiver for remote desktop display
-  DesktopReceiver1.TargetImage := ImageRemoteDesktop;
-  DesktopReceiver1.OnFrameReceived := OnRemoteFrameUpdate;
-  DesktopReceiver1.Active := True;
-  
-  // Setup network client
-  NetComClient.OnDataReceived := OnNetworkDataReceived;
-  NetComClient.Connect(ServerIP, ServerPort);
+  DesktopReceiver1.TargetImage := Image1;
+  NetCom7Server1.Start;
 end;
 ```
 
-### Performance Monitoring and Statistics
+### Complete Remote Desktop Application
 ```pascal
-procedure TForm1.SetupPerformanceMonitoring;
-var
-  PerfTimer: TTimer;
+// CLIENT (Sender) - Complete in 4 lines
+procedure TForm1.FormCreate(Sender: TObject);
 begin
-  // Track capture performance
   DesktopCapture1.OnFrameCaptured := procedure(Sender: TObject; const FrameData: TBytes; IsFullFrame: Boolean)
-  begin
-    // Update bandwidth statistics
-    Inc(TotalBytesTransmitted, Length(FrameData));
-    Inc(TotalFramesCaptured);
-    
-    if IsFullFrame then
-    begin
-      Inc(FullFrameCount);
-      FullFrameBytes := FullFrameBytes + Length(FrameData);
-    end
-    else
-    begin
-      Inc(DirtyFrameCount);
-      DirtyFrameBytes := DirtyFrameBytes + Length(FrameData);
-    end;
-  end;
-  
-  // Update UI statistics every second
-  PerfTimer := TTimer.Create(Self);
-  PerfTimer.Interval := 1000;
-  PerfTimer.OnTimer := procedure(Sender: TObject)
-  begin
-    LabelBandwidth.Caption := Format('Bandwidth: %s/sec', 
-      [FormatBytesSize(TotalBytesTransmitted - LastBytesCount)]);
-    LabelFPS.Caption := Format('FPS: %d', 
-      [TotalFramesCaptured - LastFrameCount]);
-    LabelEfficiency.Caption := Format('Dirty Ratio: %.1f%%', 
-      [(DirtyFrameCount / Max(1, TotalFramesCaptured)) * 100]);
-      
-    LastBytesCount := TotalBytesTransmitted;
-    LastFrameCount := TotalFramesCaptured;
-  end;
-  PerfTimer.Enabled := True;
+    begin NetCom7Client.ExecCommand(1, FrameData); end;
+  DesktopCapture1.Active := True;
+  NetCom7Client.Connect('192.168.1.100', 8080);
+end;
+
+// SERVER (Receiver) - Complete in 3 lines  
+procedure TForm1.NetCom7Server1ExecCommand(Sender: TObject; Socket: TCustomWinSocket; 
+  const Command: Integer; Data: TBytes);
+begin
+  if Command = 1 then DesktopReceiver1.ReceiveFrameData(Data);
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  DesktopReceiver1.TargetImage := Image1;
+  NetCom7Server1.Start;
 end;
 ```
 
-### Advanced Capture Configuration
+### Different Use Cases - Simple Configuration
 ```pascal
-procedure TForm1.ConfigureAdvancedCapture;
-begin
-  // Try DXGI first, fallback to GDI automatically
-  DesktopCapture1.Method := cmDXGI;
-  
-  // Configure based on use case
-  case UseCase of
-    ucRemoteDesktop:
-    begin
-      DesktopCapture1.Mode := cmDirtyOnly;     // Bandwidth efficient
-      DesktopCapture1.TargetFPS := 20;         // Smooth but efficient
-      DesktopCapture1.IncludeCursor := True;   // Important for remote control
-    end;
-    
-    ucScreenRecording:
-    begin
-      DesktopCapture1.Mode := cmFullFrame;     // Quality over efficiency
-      DesktopCapture1.TargetFPS := 60;         // Smooth recording
-      DesktopCapture1.IncludeCursor := True;   // Include for demonstrations
-    end;
-    
-    ucSurveillance:
-    begin
-      DesktopCapture1.Mode := cmDirtyOnly;     // Minimal storage
-      DesktopCapture1.TargetFPS := 5;          // Low frequency monitoring
-      DesktopCapture1.IncludeCursor := False;  // Not needed for surveillance
-    end;
-  end;
-  
-  DesktopCapture1.Active := True;
-end;
+// High FPS for gaming/recording
+DesktopCapture1.TargetFPS := 60;
+DesktopCapture1.Mode := cmFullFrame;
+
+// Bandwidth efficient for remote desktop  
+DesktopCapture1.TargetFPS := 20;
+DesktopCapture1.Mode := cmDirtyOnly;
+
+// Low bandwidth surveillance
+DesktopCapture1.TargetFPS := 5;
+DesktopCapture1.Mode := cmDirtyOnly;
+DesktopCapture1.IncludeCursor := False;
 ```
 
 ---
@@ -537,6 +437,7 @@ end;
 ## 🤝 Contributing
 
 Contributions welcome!
+
 ---
 
 ## 📝 License
