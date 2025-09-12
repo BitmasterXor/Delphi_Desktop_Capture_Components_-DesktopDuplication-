@@ -16,9 +16,9 @@
 
 Preview Images:
 
-<Center>![Network Preview](Preview1.png) </Center>
+![Network Preview](Preview1.png)
 
-<Center> ![Network Preview](Preview2.png) </Center>
+![Network Preview](Preview2.png)
 
 ## 🚀 Overview
 
