@@ -530,25 +530,7 @@ end;
 
 ## 🤝 Contributing
 
-Contributions welcome! Here's how to help:
-
-1. **Fork** the repository
-2. **Create** feature branch (`git checkout -b feature/enhanced-dirty-detection`)
-3. **Test** thoroughly with various desktop scenarios
-4. **Commit** with clear messages (`git commit -m 'Improve dirty region coalescing'`)
-5. **Push** to branch (`git push origin feature/enhanced-dirty-detection`)
-6. **Open** Pull Request
-
-### Development Guidelines
-- Follow Delphi coding standards and conventions
-- Test with multiple screen resolutions and configurations
-- Verify DXGI and GDI code paths work correctly
-- Ensure dirty detection accuracy across various desktop scenarios
-- Test network integration with different data sizes
-- Verify thread safety in capture and receiver components
-- Add XML documentation for new public methods
-- Test compatibility with target Delphi versions
-
+Contributions welcome!
 ---
 
 ## 📝 License
@@ -586,8 +568,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### Example Projects
 - Basic local desktop display and capture
 - Network desktop streaming (client/server)
-- Performance monitoring and statistics dashboard
-- Multi-client desktop broadcasting server
 
 ---
 
