@@ -114,7 +114,8 @@ graph TD
 2. Open `DesktopCaptureComponents.dpk` in Delphi IDE
 3. Build and Install the package
 4. Add "RequiredHeaders" Folder to your IDE's Library path 32bit and 64bit paths if you plan to make both 32bit and 64bit binaries!
-5. Components appear on **"Desktop Capture"** tab
+5. Also do not forget to do the same 32bit library path and 64bit library paths for the main components themselves in the "DesktopCaptureComponents" folder. 
+6. Components appear on **"Desktop Capture"** tab simply drag and drop to use them!
 
 ---
 
