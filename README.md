@@ -14,6 +14,9 @@
 
 ---
 
+Preview Images: 
+![Basic Preview](Preview2.png) ![Network Preview](Preview1.png)
+
 ## 🚀 Overview
 
 Delphi_DesktopCapture provides two powerful, professional-grade desktop capture components built on Windows Desktop Duplication API (DXGI) with intelligent dirty pixel detection, automatic format optimization, network-ready TBytes streaming, and seamless GDI fallback. Perfect for remote desktop applications, screen sharing, surveillance software, live streaming, and real-time desktop monitoring.
