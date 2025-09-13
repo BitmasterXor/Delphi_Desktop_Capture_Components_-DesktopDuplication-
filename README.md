@@ -1,5 +1,6 @@
 # 🖥️ Delphi_DesktopCapture
 **Professional Desktop Duplication Components for Delphi with Network Streaming & Intelligent Dirty Pixel Detection**
+KEEP AN EYE ON THIS REPO GUYS! (WIP / UPDATES COMMING VERY SOON!)
 
 <div align="center">
 
