@@ -256,7 +256,9 @@ object Form1: TForm1
     Top = 488
   end
   object DesktopCaptureReceiver1: TDesktopCaptureReceiver
+    OutputMethod = omEvent
     OnFrameReceived = DesktopCaptureReceiver1FrameReceived
+    OnBitmapReady = DesktopCaptureReceiver1BitmapReady
     Left = 112
     Top = 544
   end
