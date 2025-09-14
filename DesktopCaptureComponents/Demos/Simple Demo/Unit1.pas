@@ -58,6 +58,8 @@ type
     procedure FPSTrackBarChange(Sender: TObject);
     procedure IncludeCursorCheckBoxClick(Sender: TObject);
     procedure StatusTimerTimer(Sender: TObject);
+    procedure DesktopCaptureReceiver1BitmapReady(Sender: TObject;
+      Bitmap: TBitmap; Width, Height: Integer);
 
   private
     // Simplified statistics
@@ -179,6 +181,12 @@ begin
   // Force image refresh if needed
   if Assigned(Image1) then
     Image1.Invalidate;
+end;
+
+procedure TForm1.DesktopCaptureReceiver1BitmapReady(Sender: TObject;
+  Bitmap: TBitmap; Width, Height: Integer);
+begin
+self.Image1.Picture.Bitmap.Assign(Bitmap);
 end;
 
 procedure TForm1.DesktopCaptureReceiver1FrameReceived(Sender: TObject; Width, Height: Integer);

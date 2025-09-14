@@ -1,25 +1,23 @@
 unit DesktopCaptureReceiver;
 
-{
-  ========================================================================
-  TDesktopCaptureReceiver - DIRTY MODE FIXED
-  ========================================================================
-
-  FIXED: Dirty region reconstruction and frame handling
-}
-
 interface
 
 uses
   Windows, Classes, SysUtils, Controls, ExtCtrls, Graphics, Types,
-  System.SyncObjs, DesktopCaptureTypes,Math;
+  System.SyncObjs, DesktopCaptureTypes, Math;
 
 type
+  // New flexible output event - gives you direct bitmap access
+  TOnBitmapReady = procedure(Sender: TObject; Bitmap: TBitmap; Width, Height: Integer) of object;
+
+  // Enhanced output method enum
+  TOutputMethod = (omNone, omTImage, omEvent, omBoth);
+
   TDesktopCaptureReceiver = class(TComponent)
   private
     // Core properties
     FActive: Boolean;
-    FTargetImage: TImage;
+    FTargetImage: TImage;              // Keep for backward compatibility
 
     // Frame buffer
     FBaseFrame: TBytes;
@@ -27,7 +25,7 @@ type
     FBaseHeight: Integer;
     FHasBaseFrame: Boolean;
 
-    // Display bitmap
+    // Display bitmap - NOW PUBLIC ACCESS!
     FDisplayBitmap: TBitmap;
 
     // Thread safety
@@ -35,10 +33,15 @@ type
 
     // Events
     FOnFrameReceived: TOnReceiverUpdate;
+    FOnBitmapReady: TOnBitmapReady;    // NEW: Direct bitmap access event
+
+    // Output control
+    FOutputMethod: TOutputMethod;
 
     // Internal methods
     procedure SetTargetImage(const Value: TImage);
     procedure SetActive(const Value: Boolean);
+    procedure SetOutputMethod(const Value: TOutputMethod);
     procedure UpdateDisplay;
     procedure ApplyDirtyRegions(const FrameData: TBytes; const Regions: array of TDirtyRegion);
 
@@ -56,15 +59,29 @@ type
     procedure ClearDisplay;
     function HasValidFrame: Boolean;
 
+    // NEW: Direct bitmap access methods
+    function GetCurrentBitmap: TBitmap;
+    procedure CopyBitmapTo(DestBitmap: TBitmap);
+    procedure DrawToCanvas(Canvas: TCanvas; X, Y: Integer); overload;
+    procedure DrawToCanvas(Canvas: TCanvas; DestRect: TRect); overload;
+
+    // NEW: Copy to any image component type
+    procedure CopyToImage(ImageComponent: TImage);
+    procedure CopyToPaintBox(PaintBox: TPaintBox);
+
     // Read-only properties
     property CurrentWidth: Integer read FBaseWidth;
     property CurrentHeight: Integer read FBaseHeight;
+    property DisplayBitmap: TBitmap read FDisplayBitmap;  // NEW: Direct access
 
   published
     property Active: Boolean read FActive write SetActive default True;
     property TargetImage: TImage read FTargetImage write SetTargetImage;
+    property OutputMethod: TOutputMethod read FOutputMethod write SetOutputMethod default omBoth;
 
+    // Events
     property OnFrameReceived: TOnReceiverUpdate read FOnFrameReceived write FOnFrameReceived;
+    property OnBitmapReady: TOnBitmapReady read FOnBitmapReady write FOnBitmapReady;  // NEW!
   end;
 
 procedure Register;
@@ -82,6 +99,7 @@ begin
   FBaseWidth := 0;
   FBaseHeight := 0;
   FHasBaseFrame := False;
+  FOutputMethod := omBoth;
 
   FDisplayBitmap := TBitmap.Create;
   FDisplayBitmap.PixelFormat := pf32bit;
@@ -119,7 +137,8 @@ begin
     if Assigned(FTargetImage) then
     begin
       FTargetImage.FreeNotification(Self);
-      UpdateDisplay; // Update if we have data
+      if FOutputMethod in [omTImage, omBoth] then
+        UpdateDisplay; // Update if we have data
     end;
   end;
 end;
@@ -127,6 +146,61 @@ end;
 procedure TDesktopCaptureReceiver.SetActive(const Value: Boolean);
 begin
   FActive := Value;
+end;
+
+procedure TDesktopCaptureReceiver.SetOutputMethod(const Value: TOutputMethod);
+begin
+  FOutputMethod := Value;
+end;
+
+// NEW: Get direct access to current bitmap
+function TDesktopCaptureReceiver.GetCurrentBitmap: TBitmap;
+begin
+  Result := FDisplayBitmap;
+end;
+
+// NEW: Copy bitmap to another bitmap
+procedure TDesktopCaptureReceiver.CopyBitmapTo(DestBitmap: TBitmap);
+begin
+  if Assigned(DestBitmap) and FHasBaseFrame then
+  begin
+    DestBitmap.Assign(FDisplayBitmap);
+  end;
+end;
+
+// NEW: Draw directly to any canvas
+procedure TDesktopCaptureReceiver.DrawToCanvas(Canvas: TCanvas; X, Y: Integer);
+begin
+  if Assigned(Canvas) and FHasBaseFrame then
+  begin
+    Canvas.Draw(X, Y, FDisplayBitmap);
+  end;
+end;
+
+procedure TDesktopCaptureReceiver.DrawToCanvas(Canvas: TCanvas; DestRect: TRect);
+begin
+  if Assigned(Canvas) and FHasBaseFrame then
+  begin
+    Canvas.StretchDraw(DestRect, FDisplayBitmap);
+  end;
+end;
+
+// NEW: Copy to any TImage component
+procedure TDesktopCaptureReceiver.CopyToImage(ImageComponent: TImage);
+begin
+  if Assigned(ImageComponent) and FHasBaseFrame then
+  begin
+    ImageComponent.Picture.Assign(FDisplayBitmap);
+  end;
+end;
+
+// NEW: Copy to TPaintBox (triggers repaint)
+procedure TDesktopCaptureReceiver.CopyToPaintBox(PaintBox: TPaintBox);
+begin
+  if Assigned(PaintBox) and FHasBaseFrame then
+  begin
+    PaintBox.Invalidate; // Will trigger OnPaint where you can call DrawToCanvas
+  end;
 end;
 
 procedure TDesktopCaptureReceiver.ReceiveFrameData(const FrameData: TBytes);
@@ -202,12 +276,62 @@ begin
     FCriticalSection.Leave;
   end;
 
-  // Update display
+  // Update display based on output method
   UpdateDisplay;
 
-  // Fire event
+  // Fire events
   if Assigned(FOnFrameReceived) then
     FOnFrameReceived(Self, FBaseWidth, FBaseHeight);
+
+  // NEW: Fire bitmap ready event for maximum flexibility
+  if Assigned(FOnBitmapReady) and (FOutputMethod in [omEvent, omBoth]) then
+    FOnBitmapReady(Self, FDisplayBitmap, FBaseWidth, FBaseHeight);
+end;
+
+procedure TDesktopCaptureReceiver.UpdateDisplay;
+var
+  BitmapInfo: TBitmapInfo;
+  DIBBits: Pointer;
+begin
+  if not FHasBaseFrame or (Length(FBaseFrame) = 0) then
+    Exit;
+
+  try
+    // Create display bitmap
+    FDisplayBitmap.Width := FBaseWidth;
+    FDisplayBitmap.Height := FBaseHeight;
+
+    // Setup bitmap info for DIB
+    ZeroMemory(@BitmapInfo, SizeOf(BitmapInfo));
+    BitmapInfo.bmiHeader.biSize := SizeOf(BITMAPINFOHEADER);
+    BitmapInfo.bmiHeader.biWidth := FBaseWidth;
+    BitmapInfo.bmiHeader.biHeight := -FBaseHeight; // Top-down
+    BitmapInfo.bmiHeader.biPlanes := 1;
+    BitmapInfo.bmiHeader.biBitCount := 32;
+    BitmapInfo.bmiHeader.biCompression := BI_RGB;
+
+    // Create DIB section
+    DIBBits := nil;
+    FDisplayBitmap.Handle := CreateDIBSection(0, BitmapInfo, DIB_RGB_COLORS, DIBBits, 0, 0);
+
+    if DIBBits <> nil then
+    begin
+      // Copy frame data to bitmap
+      Move(FBaseFrame[0], DIBBits^, Min(Length(FBaseFrame), FBaseWidth * FBaseHeight * 4));
+
+      // Update target image ONLY if using TImage output method
+      if Assigned(FTargetImage) and (FOutputMethod in [omTImage, omBoth]) then
+      begin
+        FTargetImage.Picture.Assign(FDisplayBitmap);
+      end;
+    end;
+
+  except
+    on E: Exception do
+    begin
+      // Silently handle display errors
+    end;
+  end;
 end;
 
 // FIXED: Better dirty region application
@@ -264,49 +388,6 @@ begin
   end;
 end;
 
-procedure TDesktopCaptureReceiver.UpdateDisplay;
-var
-  BitmapInfo: TBitmapInfo;
-  DIBBits: Pointer;
-begin
-  if not FHasBaseFrame or not Assigned(FTargetImage) or (Length(FBaseFrame) = 0) then
-    Exit;
-
-  try
-    // Create display bitmap
-    FDisplayBitmap.Width := FBaseWidth;
-    FDisplayBitmap.Height := FBaseHeight;
-
-    // Setup bitmap info for DIB
-    ZeroMemory(@BitmapInfo, SizeOf(BitmapInfo));
-    BitmapInfo.bmiHeader.biSize := SizeOf(BITMAPINFOHEADER);
-    BitmapInfo.bmiHeader.biWidth := FBaseWidth;
-    BitmapInfo.bmiHeader.biHeight := -FBaseHeight; // Top-down
-    BitmapInfo.bmiHeader.biPlanes := 1;
-    BitmapInfo.bmiHeader.biBitCount := 32;
-    BitmapInfo.bmiHeader.biCompression := BI_RGB;
-
-    // Create DIB section
-    DIBBits := nil;
-    FDisplayBitmap.Handle := CreateDIBSection(0, BitmapInfo, DIB_RGB_COLORS, DIBBits, 0, 0);
-
-    if DIBBits <> nil then
-    begin
-      // Copy frame data to bitmap
-      Move(FBaseFrame[0], DIBBits^, Min(Length(FBaseFrame), FBaseWidth * FBaseHeight * 4));
-
-      // Update target image
-      FTargetImage.Picture.Assign(FDisplayBitmap);
-    end;
-
-  except
-    on E: Exception do
-    begin
-      // Silently handle display errors
-    end;
-  end;
-end;
-
 procedure TDesktopCaptureReceiver.ClearDisplay;
 begin
   FCriticalSection.Enter;
@@ -316,7 +397,7 @@ begin
     FBaseHeight := 0;
     FHasBaseFrame := False;
 
-    if Assigned(FTargetImage) then
+    if Assigned(FTargetImage) and (FOutputMethod in [omTImage, omBoth]) then
     begin
       FTargetImage.Picture.Bitmap.Width := 1;
       FTargetImage.Picture.Bitmap.Height := 1;
