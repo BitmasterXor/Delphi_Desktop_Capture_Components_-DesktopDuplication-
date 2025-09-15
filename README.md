@@ -1,4 +1,4 @@
-# 🖥️ Delphi_DesktopCapture
+# 🖥️ Delphi Remote Desktop Components
 **Professional Desktop Duplication Components for Delphi with Network Streaming & Intelligent Dirty Pixel Detection**
 
 <div align="center">
